@@ -1,0 +1,178 @@
+#include <Servo.h>
+
+// -------------------- Pin Configuration --------------------
+#define TRIG_PIN 10
+#define ECHO_PIN 11
+
+#define SERVO_PIN 9
+
+#define BUZZER_PIN 8
+
+#define RED_LED_PIN 7
+#define GREEN_LED_PIN 6
+
+// -------------------- Objects --------------------
+Servo radarServo;
+
+// -------------------- Settings --------------------
+const int MIN_ANGLE = 15;
+const int MAX_ANGLE = 165;
+
+const int DETECTION_DISTANCE = 100;   // cm
+const int MIN_DISTANCE = 2;
+
+// Previous distance used for movement detection
+float previousDistance = -1;
+
+// Previous detected angle
+int previousAngle = -1;
+
+// -------------------- Setup --------------------
+void setup() {
+
+  Serial.begin(9600);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+
+  radarServo.attach(SERVO_PIN);
+
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
+
+  radarServo.write(90);
+
+  delay(1000);
+
+  Serial.println("=================================");
+  Serial.println("   RADAR SURVEILLANCE SYSTEM");
+  Serial.println("=================================");
+  Serial.println("System Started...");
+}
+
+// -------------------- Measure Distance --------------------
+float measureDistance() {
+
+  // Clear trigger
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+
+  // Send ultrasonic pulse
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  // Read echo
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+
+  // No echo received
+  if (duration == 0) {
+    return -1;
+  }
+
+  // Calculate distance
+  float distance = duration * 0.0343 / 2;
+
+  return distance;
+}
+
+// -------------------- Object Detection --------------------
+void checkObject(int angle) {
+
+  float distance = measureDistance();
+
+  if (distance < MIN_DISTANCE || distance > DETECTION_DISTANCE) {
+
+    // No valid object
+    digitalWrite(BUZZER_PIN, LOW);
+
+    return;
+  }
+
+  // Object detected
+  Serial.print("Object Detected | ");
+  Serial.print("Angle: ");
+  Serial.print(angle);
+  Serial.print("° | Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  // Sound alert
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(50);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  // ------------------------------------------------
+  // Determine whether object is moving towards/away
+  // ------------------------------------------------
+
+  if (previousDistance > 0) {
+
+    float difference = previousDistance - distance;
+
+    // Object is moving towards the radar
+    if (difference > 1.0) {
+
+      digitalWrite(RED_LED_PIN, HIGH);
+      digitalWrite(GREEN_LED_PIN, LOW);
+
+      Serial.println("Status: OBJECT MOVING TOWARDS 🔴");
+
+    }
+
+    // Object is moving away
+    else if (difference < -1.0) {
+
+      digitalWrite(RED_LED_PIN, LOW);
+      digitalWrite(GREEN_LED_PIN, HIGH);
+
+      Serial.println("Status: OBJECT MOVING AWAY 🟢");
+
+    }
+
+    // Object approximately stationary
+    else {
+
+      digitalWrite(RED_LED_PIN, LOW);
+      digitalWrite(GREEN_LED_PIN, LOW);
+
+      Serial.println("Status: OBJECT STATIONARY");
+    }
+  }
+
+  // Store current distance
+  previousDistance = distance;
+
+  // Store angle
+  previousAngle = angle;
+}
+
+// -------------------- Main Loop --------------------
+void loop() {
+
+  // Sweep from left to right
+  for (int angle = MIN_ANGLE; angle <= MAX_ANGLE; angle++) {
+
+    radarServo.write(angle);
+
+    delay(25);
+
+    checkObject(angle);
+  }
+
+  // Sweep from right to left
+  for (int angle = MAX_ANGLE; angle >= MIN_ANGLE; angle--) {
+
+    radarServo.write(angle);
+
+    delay(25);
+
+    checkObject(angle);
+  }
+}
